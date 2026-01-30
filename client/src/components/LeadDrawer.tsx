@@ -1,4 +1,4 @@
-import { Plus, MoreHorizontal, Paperclip, ChevronLeft, ChevronDown, X, Printer, FileSpreadsheet, Hash, Trash2, Copy } from 'lucide-react';
+import { Plus, MoreHorizontal, Paperclip, ChevronLeft, ChevronDown, X, Printer, FileSpreadsheet, Hash, Trash2, Copy, AlertTriangle } from 'lucide-react';
 import { useState, useEffect, useRef } from 'react';
 import { leadsService } from '../services/leads';
 import { notesService } from '../services/notes';
@@ -22,6 +22,7 @@ export function LeadDrawer({ isOpen, onClose, onSave, lead }: LeadDrawerProps) {
     const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
     const [showExitConfirmation, setShowExitConfirmation] = useState(false);
     const [showDeleteConfirmation, setShowDeleteConfirmation] = useState(false);
+    const [saving, setSaving] = useState(false);
 
     // Form State
     const [leadName, setLeadName] = useState('');
@@ -63,6 +64,8 @@ export function LeadDrawer({ isOpen, onClose, onSave, lead }: LeadDrawerProps) {
     // Pipeline / Stages
     const [stages, setStages] = useState<any[]>([]);
     const [isStatusDropdownOpen, setIsStatusDropdownOpen] = useState(false);
+    const [pipelineError, setPipelineError] = useState<string | null>(null);
+
 
     useEffect(() => {
         loadPipeline();
@@ -71,11 +74,20 @@ export function LeadDrawer({ isOpen, onClose, onSave, lead }: LeadDrawerProps) {
     const loadPipeline = async () => {
         try {
             const pipeline = await pipelinesService.get();
-            if (pipeline && pipeline.stages) {
-                setStages(pipeline.stages);
+            if (!pipeline || !pipeline.stages || pipeline.stages.length === 0) {
+                setPipelineError('No hay embudo de ventas configurado');
+                setStages([]);
+                return;
+            }
+            setPipelineError(null);
+            setStages(pipeline.stages);
+            // Set default status to first pipeline stage for new leads
+            if (!lead?.id && pipeline.stages.length > 0) {
+                setStatus(pipeline.stages[0].id);
             }
         } catch (error) {
             console.error('Failed to load pipeline', error);
+            setPipelineError('Error al cargar embudo de ventas');
         }
     };
 
@@ -192,7 +204,7 @@ export function LeadDrawer({ isOpen, onClose, onSave, lead }: LeadDrawerProps) {
             } else {
                 setLeadName('');
                 setBudget('');
-                setStatus('new');
+                // Status will be set by loadPipeline() to first pipeline stage
                 setShowContactForm(false);
                 setShowCompanyForm(false);
                 setNewNote('');
@@ -336,7 +348,10 @@ export function LeadDrawer({ isOpen, onClose, onSave, lead }: LeadDrawerProps) {
     };
 
     const handleSubmit = async () => {
+        if (saving) return; // Prevent double-submission
+
         try {
+            setSaving(true);
             if (!leadName) return alert('Nombre requerido');
 
             let finalContactId: string | undefined = selectedContactId || undefined;
@@ -405,6 +420,8 @@ export function LeadDrawer({ isOpen, onClose, onSave, lead }: LeadDrawerProps) {
         } catch (error) {
             console.error(error);
             alert('Error al guardar lead');
+        } finally {
+            setSaving(false);
         }
     };
 
@@ -558,6 +575,35 @@ export function LeadDrawer({ isOpen, onClose, onSave, lead }: LeadDrawerProps) {
                         <div className="flex-1 overflow-y-auto p-6 space-y-6">
 
                             {/* Standard Fields */}
+
+                            {/* Pipeline Warning */}
+                            {pipelineError && !lead?.id && (
+                                <div className="mb-4 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+                                    <div className="flex items-start gap-3">
+                                        <AlertTriangle className="w-5 h-5 text-yellow-600 mt-0.5 flex-shrink-0" />
+                                        <div className="flex-1">
+                                            <h4 className="font-medium text-yellow-900 mb-1">
+                                                Embudo de ventas no configurado
+                                            </h4>
+                                            <p className="text-sm text-yellow-700 mb-3">
+                                                Debes configurar un embudo de ventas antes de crear leads.
+                                                Las etapas del embudo son necesarias para gestionar el proceso de ventas.
+                                            </p>
+                                            <button
+                                                onClick={() => {
+                                                    onClose();
+                                                    // User needs to click "Editar embudo" from LeadsPage menu
+                                                    alert('Por favor, haz clic en el menú "⋮" en la página de Leads y selecciona "Editar embudo" para configurar tu embudo de ventas.');
+                                                }}
+                                                className="text-sm bg-yellow-600 text-white px-3 py-1.5 rounded hover:bg-yellow-700 transition-colors"
+                                            >
+                                                Entendido
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+
                             <div className="space-y-4">
                                 <div className="grid grid-cols-[100px_1fr] gap-4 items-center">
                                     <label className="text-gray-400 text-sm">Usuario resp.</label>
@@ -791,8 +837,12 @@ export function LeadDrawer({ isOpen, onClose, onSave, lead }: LeadDrawerProps) {
 
                         {/* Footer */}
                         < div className="border-t border-gray-200 p-4 bg-gray-50 flex justify-start gap-2" >
-                            <button onClick={handleSubmit} className="bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium px-4 py-1.5 rounded">
-                                Guardar
+                            <button
+                                onClick={handleSubmit}
+                                disabled={saving || (!!pipelineError && !lead?.id)}
+                                className={`bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium px-4 py-1.5 rounded transition-colors ${(pipelineError && !lead?.id) ? 'opacity-50 cursor-not-allowed hover:bg-blue-600' : ''}`}
+                            >
+                                {saving ? 'Guardando...' : 'Guardar'}
                             </button>
                             <button onClick={handleCloseRequest} className="text-sm text-gray-500 hover:text-gray-700 px-3 py-1">
                                 Cancelar

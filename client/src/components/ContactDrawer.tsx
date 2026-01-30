@@ -1,5 +1,5 @@
 import { X, Plus, MoreHorizontal, Paperclip, Calendar, ChevronLeft, Copy, Printer, Hash, FileSpreadsheet, Trash2 } from 'lucide-react';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 
 import { companiesService, Company } from '../services/companies';
 import { contactsService, Contact } from '../services/contacts';
@@ -26,10 +26,20 @@ export function ContactDrawer({ isOpen, onClose, onSave, contact }: ContactDrawe
     // Form States
     const [firstName, setFirstName] = useState('');
     const [lastName, setLastName] = useState('');
+    const [fullName, setFullName] = useState(''); // Temporary state for the input field
     const [phone, setPhone] = useState('');
     const [email, setEmail] = useState('');
     const [position, setPosition] = useState('');
     const [companyId, setCompanyId] = useState('');
+    const [companyName, setCompanyName] = useState(''); // Main company name state
+    const [companyPhone, setCompanyPhone] = useState('');
+    const [companyEmail, setCompanyEmail] = useState('');
+    const [companyWeb, setCompanyWeb] = useState('');
+    const [companyAddress, setCompanyAddress] = useState('');
+    const [filteredCompanies, setFilteredCompanies] = useState<Company[]>([]);
+    const [showCompanySuggestions, setShowCompanySuggestions] = useState(false);
+    const [selectedCompanyId, setSelectedCompanyId] = useState<string | null>(null);
+    const companyInputRef = useRef<HTMLDivElement>(null);
     const [assignedTo, setAssignedTo] = useState('');
     const [users, setUsers] = useState<any[]>([]);
 
@@ -42,17 +52,23 @@ export function ContactDrawer({ isOpen, onClose, onSave, contact }: ContactDrawe
     const [notes, setNotes] = useState<Note[]>([]);
     const [newNote, setNewNote] = useState('');
 
-    // New Company State
-    const [newCompany, setNewCompany] = useState({
-        name: '',
-        phone: '',
-        email: '',
-        website: '',
-        address: ''
-    });
+
 
     useEffect(() => {
         loadUsers();
+        loadCompanies();
+
+        // Click outside handler for autocomplete
+        const handleClickOutside = (event: MouseEvent) => {
+            if (companyInputRef.current && !companyInputRef.current.contains(event.target as Node)) {
+                setShowCompanySuggestions(false);
+            }
+        };
+
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => {
+            document.removeEventListener('mousedown', handleClickOutside);
+        };
     }, []);
 
     const loadUsers = async () => {
@@ -67,7 +83,6 @@ export function ContactDrawer({ isOpen, onClose, onSave, contact }: ContactDrawe
 
     useEffect(() => {
         if (isOpen) {
-            loadCompanies();
             setHasUnsavedChanges(false);
             setShowExitConfirmation(false);
             setShowDeleteConfirmation(false);
@@ -76,16 +91,32 @@ export function ContactDrawer({ isOpen, onClose, onSave, contact }: ContactDrawe
                 loadNotes(contact.id);
                 setFirstName(contact.firstName || '');
                 setLastName(contact.lastName || '');
+                setFullName(`${contact.firstName || ''} ${contact.lastName || ''}`.trim());
                 setPhone(contact.phone || '');
                 setEmail(contact.email || '');
                 setPosition(contact.position || '');
                 setCompanyId(contact.companyId || '');
                 setAssignedTo(contact.assignedTo || '');
+
+                // Populate Company Info if available
+                if (contact.companyId) {
+                    const company = companies.find(c => c.id === contact.companyId);
+                    if (company) {
+                        setShowCompanyForm(true);
+                        setCompanyName(company.name);
+                        setCompanyPhone(company.phone || '');
+                        setCompanyEmail(company.email || '');
+                        setCompanyWeb(company.website || '');
+                        setCompanyAddress(company.address || '');
+                        setSelectedCompanyId(company.id);
+                    }
+                }
             } else {
                 // Reset form for create mode
                 setNotes([]);
                 setFirstName('');
                 setLastName('');
+                setFullName('');
                 setPhone('');
                 setEmail('');
                 setPosition('');
@@ -95,13 +126,14 @@ export function ContactDrawer({ isOpen, onClose, onSave, contact }: ContactDrawe
                 setLeadName('');
                 setLeadBudget('');
                 setShowCompanyForm(false);
-                setNewCompany({
-                    name: '',
-                    phone: '',
-                    email: '',
-                    website: '',
-                    address: ''
-                });
+
+                // Reset Company Form
+                setCompanyName('');
+                setCompanyPhone('');
+                setCompanyEmail('');
+                setCompanyWeb('');
+                setCompanyAddress('');
+                setSelectedCompanyId(null);
             }
         }
     }, [isOpen, contact]);
@@ -119,6 +151,35 @@ export function ContactDrawer({ isOpen, onClose, onSave, contact }: ContactDrawe
         } catch (error) {
             console.error(error);
         }
+    };
+
+    const handleCompanyNameChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const value = e.target.value;
+        setCompanyName(value);
+        setHasUnsavedChanges(true);
+        setSelectedCompanyId(null); // Reset selection if typing
+
+        if (value.trim()) {
+            const filtered = companies.filter(c =>
+                c.name.toLowerCase().includes(value.toLowerCase())
+            );
+            setFilteredCompanies(filtered);
+            setShowCompanySuggestions(true);
+        } else {
+            setFilteredCompanies([]);
+            setShowCompanySuggestions(false);
+        }
+    };
+
+    const handleSelectCompany = (company: Company) => {
+        setCompanyName(company.name);
+        setCompanyPhone(company.phone || '');
+        setCompanyEmail(company.email || '');
+        setCompanyWeb(company.website || '');
+        setCompanyAddress(company.address || '');
+        setSelectedCompanyId(company.id);
+        setShowCompanySuggestions(false);
+        setHasUnsavedChanges(true);
     };
 
     const loadNotes = async (contactId: string) => {
@@ -151,16 +212,16 @@ export function ContactDrawer({ isOpen, onClose, onSave, contact }: ContactDrawe
                 return;
             }
 
-            let finalCompanyId = companyId;
+            let finalCompanyId = selectedCompanyId || undefined;
 
-            // If creating a new company inline
-            if (showCompanyForm && newCompany.name) {
+            // If creating a new company inline (name typed but not selected)
+            if (showCompanyForm && companyName && !selectedCompanyId) {
                 const createdCompany = await companiesService.create({
-                    name: newCompany.name,
-                    email: newCompany.email,
-                    phone: newCompany.phone,
-                    website: newCompany.website,
-                    address: newCompany.address,
+                    name: companyName,
+                    email: companyEmail,
+                    phone: companyPhone,
+                    website: companyWeb,
+                    address: companyAddress,
                     industry: ''
                 });
                 finalCompanyId = createdCompany.id;
@@ -293,15 +354,26 @@ export function ContactDrawer({ isOpen, onClose, onSave, contact }: ContactDrawe
                                         type="text"
                                         placeholder="Nombre completo"
                                         className="bg-transparent border-b border-transparent hover:border-gray-600 focus:border-blue-500 w-full text-lg font-bold text-white focus:outline-none placeholder-gray-400/50"
-                                        value={`${firstName} ${lastName}`.trim()}
+                                        value={fullName}
                                         onChange={(e) => {
                                             const val = e.target.value;
-                                            const parts = val.split(' ');
-                                            const first = parts[0];
-                                            const last = parts.slice(1).join(' ');
-                                            setFirstName(first);
-                                            setLastName(last);
+                                            // Update the temporary full name state - allows spaces!
+                                            setFullName(val);
                                             setHasUnsavedChanges(true);
+                                        }}
+                                        onBlur={() => {
+                                            // Only split into firstName/lastName when user leaves the field
+                                            const parts = fullName.split(' ').filter(Boolean);
+                                            if (parts.length === 0) {
+                                                setFirstName('');
+                                                setLastName('');
+                                            } else if (parts.length === 1) {
+                                                setFirstName(parts[0]);
+                                                setLastName('');
+                                            } else {
+                                                setFirstName(parts[0]);
+                                                setLastName(parts.slice(1).join(' '));
+                                            }
                                         }}
                                     />
                                 </div>
@@ -416,10 +488,9 @@ export function ContactDrawer({ isOpen, onClose, onSave, contact }: ContactDrawe
                                 </div>
                             </div>
 
-                            {/* Company Divider */}
+                            {/* Company Section with Autocomplete */}
                             <div className="border-t border-gray-100 pt-4">
-                                {/* ... (company logic kept as is, just hidden in snippet) ... */}
-                                {!showCompanyForm && !companyId ? (
+                                {!showCompanyForm ? (
                                     <button
                                         onClick={() => setShowCompanyForm(true)}
                                         className="flex items-center gap-2 text-gray-400 hover:text-blue-500 text-sm"
@@ -430,105 +501,95 @@ export function ContactDrawer({ isOpen, onClose, onSave, contact }: ContactDrawe
                                         Agregar compañía
                                     </button>
                                 ) : (
-                                    <div className="space-y-4">
-                                        <div className="flex justify-between items-center mb-2">
-                                            <h4 className="font-medium text-sm text-gray-700">Compañía</h4>
-                                            <button onClick={() => { setShowCompanyForm(false); setCompanyId(''); handleChange(setHasUnsavedChanges, true); }} className="text-xs text-red-400 hover:text-red-600">cancelar</button>
+                                    <div className="space-y-4 animate-in fade-in" ref={companyInputRef}>
+                                        <div className="flex justify-between items-center">
+                                            <h4 className="text-sm font-medium text-gray-700 flex items-center gap-2">
+                                                <div className="w-6 h-6 rounded-full border border-blue-500 flex items-center justify-center text-blue-500">
+                                                    <Plus size={14} />
+                                                </div>
+                                                Agregar compañía
+                                            </h4>
+                                            <button onClick={() => setShowCompanyForm(false)} className="text-xs text-red-500 hover:text-red-700">cancelar</button>
                                         </div>
 
-                                        {!showCompanyForm ? (
-                                            <select
-                                                className="w-full border-b border-gray-200 py-1 text-sm focus:outline-none"
-                                                value={companyId}
-                                                onChange={(e) => handleChange(setCompanyId, e.target.value)}
-                                            >
-                                                <option value="">Seleccionar existente...</option>
-                                                <option value="new">+ Crear nueva</option>
-                                                {companies.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                                            </select>
-                                        ) : (
-                                            <div className="space-y-3 animate-in fade-in">
-                                                <input
-                                                    className="w-full border-b border-gray-200 py-1 text-sm font-medium placeholder-gray-800"
-                                                    placeholder="Nombre de la compañía"
-                                                    value={newCompany.name}
-                                                    onChange={(e) => handleChange(setNewCompany, { ...newCompany, name: e.target.value })}
-                                                />
-                                                {/* ... (new company inputs) ... */}
-                                                <div className="grid grid-cols-[100px_1fr] gap-4 items-center">
-                                                    <label className="text-gray-400 text-sm">Teléfono</label>
-                                                    <input
-                                                        className="w-full border-b border-gray-100 py-1 text-sm bg-transparent"
-                                                        placeholder="..."
-                                                        value={newCompany.phone}
-                                                        onChange={(e) => handleChange(setNewCompany, { ...newCompany, phone: e.target.value })}
-                                                    />
+                                        <div className="relative">
+                                            <input
+                                                className="w-full border-b border-blue-200 py-1 text-sm outline-none placeholder-blue-300"
+                                                placeholder="Nombre de la compañía"
+                                                value={companyName}
+                                                onChange={handleCompanyNameChange}
+                                                onFocus={() => {
+                                                    if (companyName && filteredCompanies.length > 0) setShowCompanySuggestions(true);
+                                                }}
+                                            />
+                                            {showCompanySuggestions && filteredCompanies.length > 0 && (
+                                                <div className="absolute z-10 w-full bg-white border border-gray-200 shadow-lg rounded-md mt-1 max-h-48 overflow-y-auto">
+                                                    {filteredCompanies.map(company => (
+                                                        <div
+                                                            key={company.id}
+                                                            className="px-4 py-2 hover:bg-gray-50 cursor-pointer text-sm"
+                                                            onClick={() => handleSelectCompany(company)}
+                                                        >
+                                                            {company.name}
+                                                        </div>
+                                                    ))}
+                                                    <div className="px-4 py-2 text-xs text-gray-400 border-t border-gray-100">
+                                                        O sigue escribiendo para crear una nueva
+                                                    </div>
                                                 </div>
-                                                <div className="grid grid-cols-[100px_1fr] gap-4 items-center">
-                                                    <label className="text-gray-400 text-sm">Correo</label>
-                                                    <input
-                                                        className="w-full border-b border-gray-100 py-1 text-sm bg-transparent"
-                                                        placeholder="..."
-                                                        value={newCompany.email}
-                                                        onChange={(e) => handleChange(setNewCompany, { ...newCompany, email: e.target.value })}
-                                                    />
-                                                </div>
-                                                <div className="grid grid-cols-[100px_1fr] gap-4 items-center">
-                                                    <label className="text-gray-400 text-sm">Página web</label>
-                                                    <input
-                                                        className="w-full border-b border-gray-100 py-1 text-sm bg-transparent"
-                                                        placeholder="..."
-                                                        value={newCompany.website}
-                                                        onChange={(e) => handleChange(setNewCompany, { ...newCompany, website: e.target.value })}
-                                                    />
-                                                </div>
-                                                <div className="grid grid-cols-[100px_1fr] gap-4 items-center">
-                                                    <label className="text-gray-400 text-sm">Dirección</label>
-                                                    <input
-                                                        className="w-full border-b border-gray-100 py-1 text-sm bg-transparent"
-                                                        placeholder="..."
-                                                        value={newCompany.address}
-                                                        onChange={(e) => handleChange(setNewCompany, { ...newCompany, address: e.target.value })}
-                                                    />
-                                                </div>
-                                            </div>
-                                        )}
+                                            )}
+                                        </div>
 
-                                        {!showCompanyForm && companyId && companies.find(c => c.id === companyId) && (
-                                            <div className="mt-4 space-y-4">
-                                                {(() => {
-                                                    const selected = companies.find(c => c.id === companyId);
-                                                    if (!selected) return null;
-                                                    return (
-                                                        <>
-                                                            <div className="grid grid-cols-[100px_1fr] gap-4 items-center">
-                                                                <label className="text-gray-400 text-sm">Teléfono Oficina</label>
-                                                                <div className="text-sm border-b border-transparent py-1 text-gray-700">{selected.phone || '...'}</div>
-                                                            </div>
-                                                            <div className="grid grid-cols-[100px_1fr] gap-4 items-center">
-                                                                <label className="text-gray-400 text-sm">Correo</label>
-                                                                <div className="text-sm border-b border-transparent py-1 text-gray-700">{selected.email || '...'}</div>
-                                                            </div>
-                                                            <div className="grid grid-cols-[100px_1fr] gap-4 items-center">
-                                                                <label className="text-gray-400 text-sm">Página web</label>
-                                                                <div className="text-sm border-b border-transparent py-1 text-gray-700">{selected.website || '...'}</div>
-                                                            </div>
-                                                            <div className="grid grid-cols-[100px_1fr] gap-4 items-center">
-                                                                <label className="text-gray-400 text-sm">Dirección</label>
-                                                                <div className="text-sm border-b border-transparent py-1 text-gray-700">{selected.address || '...'}</div>
-                                                            </div>
-                                                        </>
-                                                    );
-                                                })()}
+                                        <div className="space-y-3 pl-8">
+                                            <div className="grid grid-cols-[100px_1fr] gap-4 items-center">
+                                                <label className="text-gray-400 text-sm">Teléfono Oficina</label>
+                                                <input
+                                                    className="w-full border-b border-gray-100 py-1 text-sm outline-none"
+                                                    placeholder="..."
+                                                    value={companyPhone}
+                                                    onChange={(e) => { setCompanyPhone(e.target.value); setHasUnsavedChanges(true); }}
+                                                    disabled={!!selectedCompanyId} // Disable if selected existing
+                                                />
                                             </div>
-                                        )}
+                                            <div className="grid grid-cols-[100px_1fr] gap-4 items-center">
+                                                <label className="text-gray-400 text-sm">Correo</label>
+                                                <input
+                                                    className="w-full border-b border-gray-100 py-1 text-sm outline-none"
+                                                    placeholder="..."
+                                                    value={companyEmail}
+                                                    onChange={(e) => { setCompanyEmail(e.target.value); setHasUnsavedChanges(true); }}
+                                                    disabled={!!selectedCompanyId}
+                                                />
+                                            </div>
+                                            <div className="grid grid-cols-[100px_1fr] gap-4 items-center">
+                                                <label className="text-gray-400 text-sm">Página web</label>
+                                                <input
+                                                    className="w-full border-b border-gray-100 py-1 text-sm outline-none"
+                                                    placeholder="..."
+                                                    value={companyWeb}
+                                                    onChange={(e) => { setCompanyWeb(e.target.value); setHasUnsavedChanges(true); }}
+                                                    disabled={!!selectedCompanyId}
+                                                />
+                                            </div>
+                                            <div className="grid grid-cols-[100px_1fr] gap-4 items-center">
+                                                <label className="text-gray-400 text-sm">Dirección</label>
+                                                <input
+                                                    className="w-full border-b border-gray-100 py-1 text-sm outline-none"
+                                                    placeholder="..."
+                                                    value={companyAddress}
+                                                    onChange={(e) => { setCompanyAddress(e.target.value); setHasUnsavedChanges(true); }}
+                                                    disabled={!!selectedCompanyId}
+                                                />
+                                            </div>
+                                        </div>
                                     </div>
                                 )}
                             </div>
+
                         </div>
 
                         {/* Separate Footer for Contact Form */}
-                        <div className="border-t border-gray-200 p-4 bg-gray-50 flex justify-start gap-2">
+                        < div className="border-t border-gray-200 p-4 bg-gray-50 flex justify-start gap-2" >
                             <button
                                 onClick={handleSubmit}
                                 className="bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium px-4 py-1.5 rounded"
@@ -536,63 +597,65 @@ export function ContactDrawer({ isOpen, onClose, onSave, contact }: ContactDrawe
                                 {contact?.id ? 'Guardar' : 'Guardar (Instalar)'}
                             </button>
                             <button onClick={handleCloseRequest} className="text-sm text-gray-500 hover:text-gray-700 px-3 py-1">Cancelar</button>
-                        </div>
-                    </div>
+                        </div >
+                    </div >
 
                     {/* Leads Tab Content */}
-                    {activeTab === 'leads' && (
-                        <div className="w-[40%] bg-white border-r border-gray-200 overflow-y-auto p-6 space-y-8 animate-in slide-in-from-right duration-300 absolute inset-0 left-0 z-10">
-                            <h3 className="text-sm font-medium text-gray-400 mb-4">Agregar rápido</h3>
+                    {
+                        activeTab === 'leads' && (
+                            <div className="w-[40%] bg-white border-r border-gray-200 overflow-y-auto p-6 space-y-8 animate-in slide-in-from-right duration-300 absolute inset-0 left-0 z-10">
+                                <h3 className="text-sm font-medium text-gray-400 mb-4">Agregar rápido</h3>
 
-                            <div className="space-y-6">
-                                <div>
-                                    <input
-                                        className="w-full border-b-2 border-blue-500 py-2 text-lg font-medium outline-none placeholder-gray-300"
-                                        placeholder="Nombre del lead"
-                                        value={leadName}
-                                        onChange={(e) => handleChange(setLeadName, e.target.value)}
-                                        autoFocus
-                                    />
-                                </div>
-
-                                <div className="grid grid-cols-[100px_1fr] gap-4 items-center">
-                                    <label className="text-gray-500 text-sm">Presupuesto</label>
-                                    <div className="flex items-center border-b border-gray-200">
+                                <div className="space-y-6">
+                                    <div>
                                         <input
-                                            className="w-full py-1 text-sm outline-none"
-                                            placeholder="0"
-                                            type="number"
-                                            value={leadBudget}
-                                            onChange={(e) => handleChange(setLeadBudget, e.target.value)}
+                                            className="w-full border-b-2 border-blue-500 py-2 text-lg font-medium outline-none placeholder-gray-300"
+                                            placeholder="Nombre del lead"
+                                            value={leadName}
+                                            onChange={(e) => handleChange(setLeadName, e.target.value)}
+                                            autoFocus
                                         />
-                                        <span className="text-gray-500 text-sm px-2">C$</span>
+                                    </div>
+
+                                    <div className="grid grid-cols-[100px_1fr] gap-4 items-center">
+                                        <label className="text-gray-500 text-sm">Presupuesto</label>
+                                        <div className="flex items-center border-b border-gray-200">
+                                            <input
+                                                className="w-full py-1 text-sm outline-none"
+                                                placeholder="0"
+                                                type="number"
+                                                value={leadBudget}
+                                                onChange={(e) => handleChange(setLeadBudget, e.target.value)}
+                                            />
+                                            <span className="text-gray-500 text-sm px-2">C$</span>
+                                        </div>
+                                    </div>
+
+                                    <div>
+                                        <button className="bg-blue-100 text-blue-600 px-4 py-2 rounded text-sm font-medium w-full text-left flex justify-between items-center">
+                                            <span>{leadStatus === 'active' ? 'Contactado' : leadStatus}</span>
+                                            <Plus size={16} />
+                                        </button>
+                                    </div>
+
+                                    <div className="flex gap-2 pt-4">
+                                        <button
+                                            onClick={() => setActiveTab('principal')}
+                                            className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-1.5 rounded text-sm"
+                                        >
+                                            Guardar
+                                        </button>
+                                        <button
+                                            onClick={() => setActiveTab('principal')}
+                                            className="text-gray-500 px-4 py-1.5 text-sm hover:underline"
+                                        >
+                                            Cancelar
+                                        </button>
                                     </div>
                                 </div>
-
-                                <div>
-                                    <button className="bg-blue-100 text-blue-600 px-4 py-2 rounded text-sm font-medium w-full text-left flex justify-between items-center">
-                                        <span>{leadStatus === 'active' ? 'Contactado' : leadStatus}</span>
-                                        <Plus size={16} />
-                                    </button>
-                                </div>
-
-                                <div className="flex gap-2 pt-4">
-                                    <button
-                                        onClick={() => setActiveTab('principal')}
-                                        className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-1.5 rounded text-sm"
-                                    >
-                                        Guardar
-                                    </button>
-                                    <button
-                                        onClick={() => setActiveTab('principal')}
-                                        className="text-gray-500 px-4 py-1.5 text-sm hover:underline"
-                                    >
-                                        Cancelar
-                                    </button>
-                                </div>
                             </div>
-                        </div>
-                    )}
+                        )
+                    }
 
                     {/* Right Column - Notes List + Footer */}
                     <div className="flex-1 flex flex-col bg-[#f5f7f8]">
@@ -660,8 +723,8 @@ export function ContactDrawer({ isOpen, onClose, onSave, contact }: ContactDrawe
                             </div>
                         </div>
                     </div>
-                </div>
-            </div>
+                </div >
+            </div >
 
 
             {/* Custom Confirmation Modal */}

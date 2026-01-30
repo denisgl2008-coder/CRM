@@ -13,6 +13,7 @@ interface ListHeaderProps {
     onFilter?: (filters: any) => void;
     activeFilters?: any;
     onRemoveFilter?: (key: string) => void;
+    onPredefinedFilter?: (filterType: string) => void;
     preAddContent?: React.ReactNode;
     viewMode?: 'kanban' | 'list';
     onViewModeChange?: (mode: 'kanban' | 'list') => void;
@@ -28,6 +29,7 @@ export function ListHeader({
     onFilter,
     activeFilters = {},
     onRemoveFilter,
+    onPredefinedFilter,
     actions,
     customMenu,
     preAddContent,
@@ -149,6 +151,7 @@ export function ListHeader({
                                     onFilterChange={(newFilters) => {
                                         if (onFilter) onFilter(newFilters);
                                     }}
+                                    onPredefinedFilter={onPredefinedFilter}
                                     currentFilters={activeFilters}
                                 />
                             </div>

@@ -47,6 +47,7 @@ app.use('/api/products', productsRoutes);
 app.use('/api/notes', notesRoutes);
 app.use('/api/users', usersRoutes);
 app.use('/api/pipelines', pipelinesRoutes);
+app.use('/api/stats', statsRoutes);
 
 app.get('/health', (req, res) => {
     res.status(200).json({ status: 'ok', timestamp: new Date().toISOString() });

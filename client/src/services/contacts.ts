@@ -13,6 +13,7 @@ export interface Contact {
     creator?: { name: string };
     assignee?: { id: string, name: string; avatarUrl?: string }; // Relation
     createdAt: string;
+    updatedAt: string; // Add modification date
 }
 
 export interface CreateContactDTO {

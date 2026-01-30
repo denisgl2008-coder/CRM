@@ -9,9 +9,10 @@ interface FilterMenuProps {
     onFilter: (filters: any) => void;
     onFilterChange?: (filters: any) => void;
     currentFilters?: any;
+    onPredefinedFilter?: (filterType: string) => void;
 }
 
-export function FilterMenu({ isOpen, onClose, onFilter, onFilterChange, currentFilters }: FilterMenuProps) {
+export function FilterMenu({ isOpen, onClose, onFilter, onFilterChange, currentFilters, onPredefinedFilter }: FilterMenuProps) {
     const defaultState = {
         name: '',
         dateRange: 'all',
@@ -46,7 +47,7 @@ export function FilterMenu({ isOpen, onClose, onFilter, onFilterChange, currentF
     // Sync with upstream filters when they change (e.g. removed via chip)
     useEffect(() => {
         if (currentFilters) {
-            setFormData(prev => ({
+            setFormData(() => ({
                 ...defaultState,
                 ...currentFilters
             }));
@@ -114,16 +115,38 @@ export function FilterMenu({ isOpen, onClose, onFilter, onFilterChange, currentF
 
             {/* Left Column: Views/Presets */}
             <div className="w-1/4 border-r border-gray-100 py-2">
-                <div className="px-4 py-2 flex justify-between items-center text-sm font-bold text-gray-700 bg-green-50/50">
+                <button
+                    onClick={() => onPredefinedFilter?.('all')}
+                    className="w-full px-4 py-2 flex justify-between items-center text-sm font-bold text-gray-700 bg-green-50/50 hover:bg-green-100/50 transition-colors"
+                >
                     <span>Lista completa</span>
-                    <button className="text-gray-400 hover:text-gray-600"><div className="w-2 h-2 bg-gray-400 rounded-full" /></button>
-                </div>
+                    <div className="w-2 h-2 bg-green-500 rounded-full" />
+                </button>
                 <div className="space-y-1 mt-1">
-                    {['Contactos sin tareas', 'Contactos con tareas atrasadas', 'Sin leads', 'Eliminados'].map(view => (
-                        <button key={view} className="w-full text-left px-4 py-2 text-sm text-gray-600 hover:bg-gray-50">
-                            {view}
-                        </button>
-                    ))}
+                    <button
+                        onClick={() => onPredefinedFilter?.('without_tasks')}
+                        className="w-full text-left px-4 py-2 text-sm text-gray-600 hover:bg-gray-50 transition-colors"
+                    >
+                        Contactos sin tareas
+                    </button>
+                    <button
+                        onClick={() => onPredefinedFilter?.('overdue_tasks')}
+                        className="w-full text-left px-4 py-2 text-sm text-gray-600 hover:bg-gray-50 transition-colors"
+                    >
+                        Contactos con tareas atrasadas
+                    </button>
+                    <button
+                        onClick={() => onPredefinedFilter?.('no_leads')}
+                        className="w-full text-left px-4 py-2 text-sm text-gray-600 hover:bg-gray-50 transition-colors"
+                    >
+                        Sin leads
+                    </button>
+                    <button
+                        onClick={() => onPredefinedFilter?.('deleted')}
+                        className="w-full text-left px-4 py-2 text-sm text-gray-600 hover:bg-gray-50 transition-colors"
+                    >
+                        Eliminados
+                    </button>
                 </div>
             </div>
 
